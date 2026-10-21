@@ -21,7 +21,6 @@ include = [
     "../../LICENSE-MIT",
     "**/*.rs",
     "Cargo.toml",
-    "data/icon.png",
 ]
 autolib = false
 autobins = false

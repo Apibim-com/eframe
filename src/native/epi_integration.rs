@@ -503,10 +503,21 @@ impl EpiIntegration {
     }
 }
 
+// BeamCraft patch (Apibim-com/BeamCraft#149): the upstream fallback embedded `data/icon.png`,
+// whose author and licence could not be proven (BeamCraft `AGENTS.md` §1), so those bytes are
+// not compiled in at all. Apps are expected to set their own icon with
+// `ViewportBuilder::with_icon`; this generated placeholder only serves apps that set none.
 fn load_default_egui_icon() -> egui::IconData {
     profiling::function_scope!();
-    #[expect(clippy::unwrap_used)]
-    crate::icon_data::from_png_bytes(&include_bytes!("../../data/icon.png")[..]).unwrap()
+    let mut rgba = vec![0; 16 * 16 * 4];
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel[3] = 255;
+    }
+    egui::IconData {
+        rgba,
+        width: 16,
+        height: 16,
+    }
 }
 
 #[cfg(feature = "persistence")]
