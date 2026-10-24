@@ -102,6 +102,13 @@ fn set_app_icon_windows(icon_data: &IconData) -> AppIconStatus {
         return AppIconStatus::NotSetTryAgain;
     }
 
+    // BeamCraft patch: an icon group the executable carries as resource 1 wins. Loaded shared,
+    // the shell can reload the exact size it draws (such as the 24 px taskbar icon) instead of
+    // scaling the one bitmap given here.
+    if set_resource_icons_windows(window_handle) {
+        return AppIconStatus::Set;
+    }
+
     fn create_hicon_with_scale(unscaled_image: &image::RgbaImage, target_size: i32) -> HICON {
         let image_scaled = image::imageops::resize(
             unscaled_image,
@@ -195,6 +202,48 @@ fn set_app_icon_windows(icon_data: &IconData) -> AppIconStatus {
 
     // It _probably_ worked out.
     AppIconStatus::Set
+}
+
+/// Sets the executable's icon resource 1 as the big and the small window icon; `false` when the
+/// executable has no such resource. (BeamCraft patch.)
+#[cfg(target_os = "windows")]
+#[expect(unsafe_code)]
+fn set_resource_icons_windows(window: windows_sys::Win32::Foundation::HWND) -> bool {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED,
+        LoadImageW, SM_CXICON, SM_CXSMICON, SendMessageW, WM_SETICON,
+    };
+
+    // SAFETY: a null module name returns the handle of the running executable.
+    let module = unsafe { GetModuleHandleW(core::ptr::null()) };
+    if module.is_null() {
+        return false;
+    }
+    for (kind, metric) in [(ICON_BIG, SM_CXICON), (ICON_SMALL, SM_CXSMICON)] {
+        // SAFETY: WinAPI getter function with no known side effects.
+        let size = unsafe { GetSystemMetrics(metric) };
+        // SAFETY: the name is the integer resource ID 1 (`MAKEINTRESOURCEW(1)`); a shared icon
+        // is owned by the system and must not be destroyed.
+        let icon = unsafe {
+            LoadImageW(
+                module,
+                1 as windows_sys::core::PCWSTR,
+                IMAGE_ICON,
+                size,
+                size,
+                LR_DEFAULTCOLOR | LR_SHARED,
+            )
+        };
+        if icon.is_null() {
+            return false;
+        }
+        // SAFETY: both handles were created by WinAPI and checked for null.
+        unsafe {
+            SendMessageW(window, WM_SETICON, kind as usize, icon as isize);
+        }
+    }
+    true
 }
 
 /// Set icon & app title for `MacOS` applications.
